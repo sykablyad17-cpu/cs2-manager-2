@@ -496,6 +496,26 @@
         tab.querySelector('.deep-training-panel')?.remove();
         document.getElementById('career-training-panel')?.remove();
         document.getElementById('training-reminder-slot')?.remove();
+        let slot = document.getElementById('map-training-slot');
+        if (!slot) {
+            slot = document.createElement('div');
+            slot.id = 'map-training-slot';
+            tab.appendChild(slot);
+        }
+        let panel = document.getElementById('map-mastery-panel');
+        if (!panel) {
+            panel = document.createElement('section');
+            panel.id = 'map-mastery-panel';
+            panel.className = 'panel codex-panel map-training-panel';
+            slot.appendChild(panel);
+        } else if (panel.parentElement !== slot) {
+            slot.appendChild(panel);
+        }
+        ensureClubRestructureState();
+        panel.innerHTML = `<div class="training-map-head"><div><small>ТРЕНУВАННЯ</small><h3>Підготовка карт</h3></div><span><b>${state.trainingPoints || 0} TP</b><em>Втома ${Math.round(state.trainingFatigue || 0)}/100</em></span></div>
+            <div class="training-map-summary"><span><small>Слабка карта</small><b>${escapeLiveText(state.weakMap || '-')}</b></span><span><small>Останній план</small><b>${escapeLiveText(state.lastTrainingSummary || 'Поки без тренувань')}</b></span><span><small>Правило</small><b>Аналітика +1 за TP, максимум 30</b></span></div>
+            <div id="map-buttons-zone" class="map-buttons-zone"></div>`;
+        if (typeof updateMapMasteryDisplay === 'function') updateMapMasteryDisplay();
     }
 
     function dcEnsureMatchPreparation() {

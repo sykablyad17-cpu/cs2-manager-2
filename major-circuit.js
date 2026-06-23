@@ -2,19 +2,31 @@
 (function () {
     'use strict';
 
-    const CIRCUIT_VERSION = 1;
+    const CIRCUIT_VERSION = 2;
     const QUALIFIER_WAVES = [
         [
-            { id: 'iem-usa-26', name: 'IEM USA 26', size: 12, swissRounds: 3, prizePool: 28000, points: { champion: 520, finalist: 360, semifinal: 230, quarterfinal: 140, swiss: 60 } },
-            { id: 'blast-bounty-26', name: 'BLAST Bounty 26', size: 18, swissRounds: 4, prizePool: 20000, points: { champion: 420, finalist: 290, semifinal: 180, quarterfinal: 110, swiss: 45 } }
+            { id: 'iem-usa-26', name: 'IEM USA 26', size: 12, swissRounds: 5, prizePool: 28000, points: { champion: 520, finalist: 360, semifinal: 230, quarterfinal: 140, swiss: 60 } },
+            { id: 'blast-bounty-26', name: 'BLAST Bounty 26', size: 18, swissRounds: 5, prizePool: 20000, points: { champion: 420, finalist: 290, semifinal: 180, quarterfinal: 110, swiss: 45 } }
         ],
         [
-            { id: 'iem-germany-26', name: 'IEM Germany 26', size: 12, swissRounds: 3, prizePool: 32000, points: { champion: 540, finalist: 375, semifinal: 240, quarterfinal: 150, swiss: 65 } },
-            { id: 'blast-open-26', name: 'BLAST Open 26', size: 18, swissRounds: 4, prizePool: 22000, points: { champion: 440, finalist: 300, semifinal: 190, quarterfinal: 115, swiss: 50 } }
+            { id: 'iem-germany-26', name: 'IEM Germany 26', size: 12, swissRounds: 5, prizePool: 32000, points: { champion: 540, finalist: 375, semifinal: 240, quarterfinal: 150, swiss: 65 } },
+            { id: 'blast-open-26', name: 'BLAST Open 26', size: 18, swissRounds: 5, prizePool: 22000, points: { champion: 440, finalist: 300, semifinal: 190, quarterfinal: 115, swiss: 50 } }
         ],
         [
-            { id: 'starladder-26', name: 'StarLadder StarSeries 26', size: 12, swissRounds: 3, prizePool: 35000, points: { champion: 560, finalist: 390, semifinal: 250, quarterfinal: 155, swiss: 70 } },
-            { id: 'xse-pro-league-26', name: 'XSE Pro League 26', size: 18, swissRounds: 4, prizePool: 24000, points: { champion: 460, finalist: 315, semifinal: 200, quarterfinal: 120, swiss: 55 } }
+            { id: 'starladder-26', name: 'StarLadder StarSeries 26', size: 12, swissRounds: 5, prizePool: 35000, points: { champion: 560, finalist: 390, semifinal: 250, quarterfinal: 155, swiss: 70 } },
+            { id: 'xse-pro-league-26', name: 'XSE Pro League 26', size: 18, swissRounds: 5, prizePool: 24000, points: { champion: 460, finalist: 315, semifinal: 200, quarterfinal: 120, swiss: 55 } }
+        ],
+        [
+            { id: 'iem-dallas-26', name: 'IEM Dallas 26', size: 12, swissRounds: 5, prizePool: 30000, points: { champion: 500, finalist: 340, semifinal: 220, quarterfinal: 135, swiss: 55 } },
+            { id: 'cct-global-finals-26', name: 'CCT Global Finals 26', size: 18, swissRounds: 5, prizePool: 18000, points: { champion: 360, finalist: 245, semifinal: 160, quarterfinal: 95, swiss: 40 } }
+        ],
+        [
+            { id: 'iem-rio-26', name: 'IEM Rio 26', size: 12, swissRounds: 5, prizePool: 31000, points: { champion: 515, finalist: 350, semifinal: 225, quarterfinal: 140, swiss: 58 } },
+            { id: 'yalla-compass-26', name: 'YaLLa Compass 26', size: 18, swissRounds: 5, prizePool: 19000, points: { champion: 370, finalist: 255, semifinal: 165, quarterfinal: 100, swiss: 42 } }
+        ],
+        [
+            { id: 'pgl-bucharest-26', name: 'PGL Bucharest 26', size: 12, swissRounds: 5, prizePool: 33000, points: { champion: 535, finalist: 370, semifinal: 235, quarterfinal: 145, swiss: 62 } },
+            { id: 'thunderpick-26', name: 'Thunderpick World Cup 26', size: 18, swissRounds: 5, prizePool: 21000, points: { champion: 390, finalist: 270, semifinal: 175, quarterfinal: 105, swiss: 45 } }
         ]
     ];
     const ESL_CONFIG = { id: 'esl-pro-league-26', name: 'ESL Pro League 26', size: 24, swissRounds: 5, league: true, prizePool: 40000, points: {} };
@@ -40,6 +52,7 @@
             mapDiff: 0,
             opponents: [],
             seedPoints: team?.points || 0,
+            swissStatus: 'active',
             isPlayer: name === state.userTeamFullName
         };
     }
@@ -118,7 +131,7 @@
         circuit.activeEventId = null;
         const ranked = mcSortedWorld().map(team => team.name);
 
-        if (circuit.phase <= 2) {
+        if (circuit.phase < QUALIFIER_WAVES.length) {
             const configs = QUALIFIER_WAVES[circuit.phase];
             const groups = [ranked.slice(0, 12), ranked.slice(12, 30)];
             configs.forEach((config, index) => {
@@ -133,7 +146,7 @@
             return;
         }
 
-        if (circuit.phase === 3) {
+        if (circuit.phase === QUALIFIER_WAVES.length) {
             circuit.eslInvites = mcMajorPointRanking().slice(0, 24).map(row => row.name);
             const event = mcCreateEvent(ESL_CONFIG, circuit.eslInvites);
             circuit.events[event.id] = event;
@@ -147,13 +160,13 @@
                 mcApplyWorldPenalty(state.userTeamFullName, 100, 'не потрапила до ESL Pro League 26');
                 mcSimulateEventToEnd(event);
                 circuit.majorInvites = mcRankEvent(event).slice(0, 16).map(row => row.name);
-                circuit.phase = 4;
+                circuit.phase = QUALIFIER_WAVES.length + 1;
                 mcInitializePhase();
             }
             return;
         }
 
-        if (circuit.phase === 4) {
+        if (circuit.phase === QUALIFIER_WAVES.length + 1) {
             const invites = circuit.majorInvites.length ? circuit.majorInvites : [];
             const event = mcCreateEvent(MAJOR_CONFIG, invites);
             circuit.events[event.id] = event;
@@ -188,7 +201,7 @@
     }
 
     function mcPairSwiss(event) {
-        const pool = mcRankEvent(event);
+        const pool = mcRankEvent(event).filter(row => row.swissStatus !== 'qualified' && row.swissStatus !== 'eliminated');
         const pairings = [];
         while (pool.length > 1) {
             const first = pool.shift();
@@ -199,6 +212,7 @@
             if (opponentIndex < 0) opponentIndex = 0;
             pairings.push([first.name, pool.splice(opponentIndex, 1)[0].name]);
         }
+        if (pool.length === 1) pairings.push([pool[0].name, null]);
         return pairings;
     }
 
@@ -267,6 +281,28 @@
         return { winner, loser };
     }
 
+    function mcSwissQualificationCutoff(event) {
+        if (event.config.league) return 16;
+        return 8;
+    }
+
+    function mcApplySwissStatuses(event) {
+        const cutoff = mcSwissQualificationCutoff(event);
+        mcRankEvent(event).forEach(row => {
+            if (row.swissStatus !== 'active') return;
+            const qualified = event.standings.filter(item => item.swissStatus === 'qualified').length;
+            if (row.wins >= 3 && qualified < cutoff) row.swissStatus = 'qualified';
+            else if (row.losses >= 3) row.swissStatus = 'eliminated';
+        });
+    }
+
+    function mcShouldCompleteSwiss(event) {
+        const cutoff = mcSwissQualificationCutoff(event);
+        const qualified = event.standings.filter(row => row.swissStatus === 'qualified').length;
+        const active = event.standings.filter(row => row.swissStatus === 'active').length;
+        return qualified >= cutoff || active <= 1 || event.swissRound >= event.config.swissRounds;
+    }
+
     function mcRecordEventPlayerStats(event, result, winnerName) {
         event.playerStats = event.playerStats || {};
         const mapCount = Math.max(2, Number(result.scoreA || 0) + Number(result.scoreB || 0));
@@ -330,14 +366,15 @@
         const winner = mcTeam(winnerName);
         const loser = mcTeam(loserName);
         if (winner) {
-            winner.points += 5;
             winner.chemistry = Math.min(100, (winner.chemistry || 70) + 1);
-            if (winner.name !== state.userTeamFullName && typeof addRecentResult === 'function') addRecentResult(winner, true);
+            if (typeof addRecentResult === 'function') addRecentResult(winner, true);
+            winner.matchesPlayed = (winner.matchesPlayed || 0) + 1;
+            winner.matchWins = (winner.matchWins || 0) + 1;
         }
         if (loser) {
-            loser.points = Math.max(0, loser.points - 3);
             loser.chemistry = Math.max(45, (loser.chemistry || 70) - 1);
-            if (loser.name !== state.userTeamFullName && typeof addRecentResult === 'function') addRecentResult(loser, false);
+            if (typeof addRecentResult === 'function') addRecentResult(loser, false);
+            loser.matchesPlayed = (loser.matchesPlayed || 0) + 1;
         }
         (result?.maps || []).forEach(map => {
             if (winner?.name !== state.userTeamFullName && typeof updateTeamMapDevelopment === 'function') updateTeamMapDevelopment(winner, map.map, map.winner === winner.name);
@@ -362,21 +399,39 @@
             isPlayer: result.teamA === state.userTeamFullName || result.teamB === state.userTeamFullName
         });
         state.calendar = state.calendar.slice(0, 180);
-        state.matchWeek = (state.matchWeek || 1) + 1;
+    }
+
+    function mcApplyGroupWorldPoints(event) {
+        if (event.groupWorldAwarded) return;
+        event.groupWorldAwarded = true;
+        mcRankEvent(event).forEach((row, index) => {
+            const team = mcTeam(row.name);
+            if (!team) return;
+            const qualified = row.swissStatus === 'qualified' || event.playoffTeams.includes(row.name) || event.placements[row.name] === 'qualified';
+            const base = event.config.league ? (qualified ? 24 : -18) : (qualified ? 18 : -12);
+            const recordBonus = row.wins * 3 - row.losses * 2 + Math.max(-4, Math.min(8, row.mapDiff));
+            const seedBonus = Math.max(0, 6 - index);
+            team.points = Math.max(0, Math.round(team.points + base + recordBonus + seedBonus));
+        });
     }
 
     function mcCompleteSwiss(event) {
         const ranked = mcRankEvent(event);
         if (event.config.league) {
-            ranked.slice(0, 16).forEach(row => { event.placements[row.name] = 'qualified'; });
-            ranked.slice(16).forEach(row => { event.placements[row.name] = 'league'; });
+            ranked.slice(0, 16).forEach(row => { row.swissStatus = 'qualified'; event.placements[row.name] = 'qualified'; });
+            ranked.slice(16).forEach(row => { row.swissStatus = 'eliminated'; event.placements[row.name] = 'league'; });
+            mcApplyGroupWorldPoints(event);
             event.stage = 'complete';
             event.completed = true;
             mcAwardEvent(event);
             return;
         }
-        event.playoffTeams = ranked.slice(0, 8).map(row => row.name);
-        ranked.slice(8).forEach(row => { event.placements[row.name] = 'swiss'; });
+        event.playoffTeams = ranked.slice(0, 8).map(row => {
+            row.swissStatus = 'qualified';
+            return row.name;
+        });
+        ranked.slice(8).forEach(row => { row.swissStatus = 'eliminated'; event.placements[row.name] = 'swiss'; });
+        mcApplyGroupWorldPoints(event);
         event.stage = 'quarterfinal';
         event.pendingPairings = null;
     }
@@ -404,6 +459,16 @@
         const winners = [];
         const losers = [];
         pairings.forEach(pair => {
+            if (!pair[1]) {
+                const row = event.standings.find(item => item.name === pair[0]);
+                if (row) {
+                    row.wins++;
+                    row.mapDiff += 2;
+                    event.matches.push({ teamA: pair[0], teamB: 'BYE', scoreA: 2, scoreB: 0, maps: [], stage: event.stage, round: event.swissRound + 1, bye: true });
+                }
+                winners.push(pair[0]);
+                return;
+            }
             const outcome = mcApplyMatch(event, mcSimulateMatch(pair[0], pair[1], event.stage === 'final' ? 5 : 3), event.stage);
             winners.push(outcome.winner);
             losers.push(outcome.loser);
@@ -411,9 +476,12 @@
         event.pendingPairings = null;
         if (event.stage === 'swiss') {
             event.swissRound++;
-            if (event.swissRound >= event.config.swissRounds) mcCompleteSwiss(event);
+            mcApplySwissStatuses(event);
+            if (mcShouldCompleteSwiss(event)) mcCompleteSwiss(event);
+            state.matchWeek = (state.matchWeek || 1) + 1;
         } else {
             mcAdvancePlayoffStage(event, winners, losers);
+            state.matchWeek = (state.matchWeek || 1) + 1;
         }
     }
 
@@ -437,6 +505,19 @@
         const pairings = mcEnsurePairings(event);
         const playerPair = pairings.find(pair => pair.includes(state.userTeamFullName));
         if (!playerPair) return;
+        if (!playerPair[1]) {
+            const row = event.standings.find(item => item.name === state.userTeamFullName);
+            if (row) { row.wins++; row.mapDiff += 2; }
+            event.pendingPairings = null;
+            event.swissRound++;
+            mcApplySwissStatuses(event);
+            if (mcShouldCompleteSwiss(event)) mcCompleteSwiss(event);
+            state.matchWeek = (state.matchWeek || 1) + 1;
+            mcPrepareNextOpponent();
+            mcRenderAll();
+            autoSave('major-circuit-bye');
+            return;
+        }
         const isPlayerA = playerPair[0] === state.userTeamFullName;
         const mapTarget = event.stage === 'final' ? 3 : 2;
         const playerScore = Math.max(0, Math.min(mapTarget, Number(seriesState.playerScore) || (playerWon ? mapTarget : Math.max(0, mapTarget - 1))));
@@ -451,6 +532,12 @@
         const winners = [];
         const losers = [];
         pairings.forEach(pair => {
+            if (!pair[1]) {
+                const byeRow = event.standings.find(row => row.name === pair[0]);
+                if (byeRow) { byeRow.wins++; byeRow.mapDiff += 2; }
+                winners.push(pair[0]);
+                return;
+            }
             const matchResult = pair === playerPair ? result : mcSimulateMatch(pair[0], pair[1], event.stage === 'final' ? 5 : 3);
             const outcome = mcApplyMatch(event, matchResult, event.stage);
             winners.push(outcome.winner);
@@ -464,12 +551,17 @@
 
         if (event.stage === 'swiss') {
             event.swissRound++;
-            if (event.swissRound >= event.config.swissRounds) mcCompleteSwiss(event);
+            mcApplySwissStatuses(event);
+            if (mcShouldCompleteSwiss(event)) mcCompleteSwiss(event);
+            state.matchWeek = (state.matchWeek || 1) + 1;
         } else {
             mcAdvancePlayoffStage(event, winners, losers);
+            state.matchWeek = (state.matchWeek || 1) + 1;
         }
 
-        const playerStillAlive = !event.completed && (event.stage === 'swiss' || event.playoffTeams.includes(state.userTeamFullName));
+        const playerRow = event.standings.find(row => row.name === state.userTeamFullName);
+        const playerSwissActive = event.stage === 'swiss' && (!playerRow || playerRow.swissStatus === 'active');
+        const playerStillAlive = !event.completed && (playerSwissActive || event.playoffTeams.includes(state.userTeamFullName));
         if (!playerStillAlive) {
             mcSimulateEventToEnd(event);
             circuit.currentEventIds.forEach(id => mcSimulateEventToEnd(circuit.events[id]));
@@ -482,21 +574,21 @@
 
     function mcAdvancePhaseAfterEvent(event) {
         const circuit = state.majorCircuit;
-        if (circuit.phase <= 2) {
+        if (circuit.phase < QUALIFIER_WAVES.length) {
             circuit.phase++;
             mcInitializePhase();
             return;
         }
-        if (circuit.phase === 3) {
+        if (circuit.phase === QUALIFIER_WAVES.length) {
             circuit.majorInvites = mcRankEvent(event).slice(0, 16).map(row => row.name);
             if (!circuit.majorInvites.includes(state.userTeamFullName)) {
                 mcApplyWorldPenalty(state.userTeamFullName, 55, 'не пройшла ліговий етап ESL Pro League 26');
             }
-            circuit.phase = 4;
+            circuit.phase = QUALIFIER_WAVES.length + 1;
             mcInitializePhase();
             return;
         }
-        if (circuit.phase === 4) mcFinishSeason();
+        if (circuit.phase === QUALIFIER_WAVES.length + 1) mcFinishSeason();
     }
 
     function mcPrepareNextOpponent() {
@@ -518,9 +610,12 @@
     }
 
     function mcTournamentMvp(event) {
-        const liveLeader = mcEventPlayerRanking(event)[0];
-        if (liveLeader?.matches) return { name: liveLeader.name, team: liveLeader.team, rating: liveLeader.rating };
         const placementBonus = { champion: 0.14, finalist: 0.08, semifinal: 0.045, quarterfinal: 0.02, qualified: 0.025, swiss: 0 };
+        const liveRows = mcEventPlayerRanking(event).map(row => ({
+            ...row,
+            score: row.rating + (row.kd - 1) * 0.08 + (row.mvps || 0) * 0.03 + (placementBonus[event.placements[row.team]] || 0)
+        })).sort((a, b) => b.score - a.score);
+        if (liveRows[0]?.matches) return { name: liveRows[0].name, team: liveRows[0].team, rating: liveRows[0].rating };
         let best = null;
         event.participants.forEach(teamName => {
             const team = mcTeam(teamName);
@@ -541,6 +636,7 @@
         if (event.awarded) return;
         event.awarded = true;
         const circuit = state.majorCircuit;
+        const worldPlacement = { champion: 55, finalist: 34, semifinal: 22, quarterfinal: 12, qualified: 10, swiss: -8, league: -16 };
         event.participants.forEach(teamName => {
             const placement = event.placements[teamName] || 'swiss';
             const points = event.config.points?.[placement] || 0;
@@ -549,6 +645,8 @@
             circuit.majorPoints[teamName] = (circuit.majorPoints[teamName] || 0) + points;
             circuit.teamEvents[teamName] = circuit.teamEvents[teamName] || [];
             circuit.teamEvents[teamName].push({ event: event.name, placement, points, prize });
+            const team = mcTeam(teamName);
+            if (team) team.points = Math.max(0, Math.round(team.points + (worldPlacement[placement] || 0)));
             if (teamName === state.userTeamFullName && prize > 0) state.money += prize;
         });
         event.mvp = mcTournamentMvp(event);
@@ -631,10 +729,9 @@
         if (!panel || !circuit) return;
         const event = circuit.events[circuit.activeEventId] || circuit.events[circuit.currentEventIds[0]];
         const userRow = event?.standings.find(row => row.name === state.userTeamFullName);
-        const pointsRank = mcMajorPointRanking().findIndex(row => row.name === state.userTeamFullName) + 1;
         panel.innerHTML = `
             <div class="major-panel-head"><div><small>СЕЗОН ${state.seasonNumber}</small><h3>${event ? escapeLiveText(event.name) : 'Major Circuit 26'}</h3></div><span>${event ? escapeLiveText(STAGE_LABELS[event.stage] || event.stage) : '-'}</span></div>
-            <div class="major-panel-stats"><span>Major Points <b>${circuit.majorPoints[state.userTeamFullName] || 0}</b></span><span>Місце в гонці <b>#${pointsRank}</b></span><span>Баланс турніру <b>${userRow ? `${userRow.wins}-${userRow.losses}` : '-'}</b></span></div>
+            <div class="major-panel-stats"><span>Турнір <b>${event ? `${event.participants.length} команд` : '-'}</b></span><span>Етап <b>${event ? escapeLiveText(STAGE_LABELS[event.stage] || event.stage) : '-'}</b></span><span>Баланс <b>${userRow ? `${userRow.wins}-${userRow.losses}` : '-'}</b></span></div>
             <button class="open-tournament-btn" onclick="openTournamentWindow(true)">Відкрити сезонний турнір</button>`;
     }
 
@@ -671,12 +768,13 @@
         if (!circuit || !body || !subtitle) return;
         subtitle.textContent = `Сезон ${state.seasonNumber} · Major Circuit · чесний Swiss та посів плей-оф`;
         const timelineNames = [
-            'USA / Bounty', 'Germany / Open', 'StarSeries / XSE', 'ESL Pro League', 'Cologne Major'
+            ...QUALIFIER_WAVES.map(wave => wave.map(item => item.name.replace(' 26', '')).join(' / ')),
+            'ESL Pro League',
+            'Cologne Major'
         ];
         const completedEvents = Object.values(circuit.events).filter(event => event.completed && !circuit.currentEventIds.includes(event.id));
         body.innerHTML = `<div class="major-circuit-window">
             <div class="major-timeline">${timelineNames.map((name, index) => `<span class="${index < circuit.phase ? 'done' : index === circuit.phase ? 'current' : ''}"><i>${index + 1}</i>${name}</span>`).join('')}</div>
-            <div class="major-points-race"><div class="major-event-title"><div><h3>Major Points</h3><small>Топ-24 отримають запрошення до ESL Pro League 26</small></div></div><div class="major-points-grid">${mcMajorPointRanking().slice(0, 24).map((row, index) => `<span class="${row.isPlayer ? 'player' : ''}"><i>#${index + 1}</i>${teamLogoHtml(row.name)}<b>${escapeLiveText(row.name)}</b><strong>${row.points}</strong></span>`).join('')}</div></div>
             ${circuit.currentEventIds.map(id => mcEventTable(circuit.events[id])).join('')}
             ${completedEvents.length ? `<section class="major-completed-events"><h3>Завершені турніри сезону</h3>${completedEvents.map(event => {
                 const champion = Object.keys(event.placements).find(name => event.placements[name] === 'champion');

@@ -1110,7 +1110,16 @@ function initializeRatingsForTeam(teamName) {
 
 function syncPlayerTeamInRating() {
     const team = teamsRating.find(t => t.isPlayer);
-    if (team) team.players = state.players;
+    if (team) {
+        const recentResults = Array.isArray(team.recentResults) ? team.recentResults : [];
+        const matchWins = team.matchWins || 0;
+        const matchesPlayed = team.matchesPlayed || 0;
+        team.players = state.players;
+        team.recentResults = recentResults.slice(-5);
+        team.matchWins = matchWins;
+        team.matchesPlayed = matchesPlayed;
+        team.chemistry = state.chemistry || team.chemistry || 70;
+    }
 }
 
 function restoreRatingsIfNeeded() {
@@ -4647,10 +4656,10 @@ function getConnectedRosterPower(players, chemistry, mapRow, isWeakMap = false, 
     return effectiveSkill
         + averageForm * 0.7
         + (averageRating - 1) * 16
-        + (averageLevel - 8) * 0.35
+        + (averageLevel - 8) * 0.28
         + (Number(chemistry || 70) - 70) * 0.12
-        + mapSkill * 0.45
-        + (mapWinrate - 50) * 0.06 * mapExperience
+        + mapSkill * 0.28
+        + (mapWinrate - 50) * 0.04 * mapExperience
         - Math.max(0, (Number(fatigue || 0) - 55) * 0.12);
 }
 
