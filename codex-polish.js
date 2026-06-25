@@ -574,3 +574,737 @@
         if (typeof renderRatingTable === 'function') renderRatingTable();
     });
 })();
+
+// === CODEX FINAL UX POLISH: no new gameplay, only clarity and consistency ===
+(function () {
+    function esc(value) {
+        return String(value ?? '').replace(/[&<>"']/g, char => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        }[char]));
+    }
+
+    function normalizeVisibleNumbers() {
+        document.querySelectorAll('body *:not(script):not(style)').forEach(element => {
+            if (element.children.length > 0) return;
+            const text = element.textContent || '';
+            if (!/(NaN|undefined|null)/i.test(text)) return;
+            element.textContent = text
+                .replace(/NaN%?/g, '0%')
+                .replace(/undefined|null/gi, '-');
+        });
+    }
+
+    function installEmptyStates() {
+        const targets = [
+            ['transfer-search-results', 'Натисніть “Знайти гравців”, щоб показати список трансферів.'],
+            ['sys-log', 'Поки немає нових повідомлень.'],
+            ['rating-table-container', 'Рейтинг оновиться після старту карʼєри.'],
+            ['live-stats-board', 'Статистика матчу зʼявиться після старту карти.']
+        ];
+        targets.forEach(([id, message]) => {
+            const node = document.getElementById(id);
+            if (!node || node.children.length || (node.textContent || '').trim()) return;
+            node.innerHTML = `<div class="codex-empty-state">${message}</div>`;
+        });
+    }
+
+    function colorKeyNumbers() {
+        document.querySelectorAll('.stats-grid span, .club-player-stats-modern span, .world-player-stat-list b, .major-table-row span, .tier-row span').forEach(element => {
+            if (element.__codexNumberColored) return;
+            const text = (element.textContent || '').trim();
+            const value = Number(text.replace(/[^\d.-]/g, ''));
+            if (!Number.isFinite(value)) return;
+            element.__codexNumberColored = true;
+            if (/rating/i.test(element.parentElement?.textContent || '') && value >= 1.15) element.classList.add('codex-number-good');
+            if (/rating/i.test(element.parentElement?.textContent || '') && value < 0.95) element.classList.add('codex-number-bad');
+            if (/K\/D/i.test(element.parentElement?.textContent || '') && value >= 1.25) element.classList.add('codex-number-good');
+        });
+    }
+
+    function buildPostMatchSummary(report) {
+        if (!report) return '';
+        const maps = Array.isArray(report.maps) ? report.maps : [];
+        const bestMap = maps.slice().sort((a, b) => {
+            const aDiff = Number(a.playerRounds || 0) - Number(a.enemyRounds || 0);
+            const bDiff = Number(b.playerRounds || 0) - Number(b.enemyRounds || 0);
+            return bDiff - aDiff;
+        })[0];
+        const closeMap = maps.slice().sort((a, b) => {
+            const aDiff = Math.abs(Number(a.playerRounds || 0) - Number(a.enemyRounds || 0));
+            const bDiff = Math.abs(Number(b.playerRounds || 0) - Number(b.enemyRounds || 0));
+            return aDiff - bDiff;
+        })[0];
+        return `
+            <div class="post-match-polish-summary">
+                <span><small>MVP</small><b>${esc(state.lastMVP || '-')}</b></span>
+                <span><small>Серія</small><b>${esc(report.playerScore)}-${esc(report.enemyScore)}</b></span>
+                <span><small>Найкраща мапа</small><b>${bestMap ? `${esc(bestMap.map)} ${esc(bestMap.playerRounds)}-${esc(bestMap.enemyRounds)}` : '-'}</b></span>
+                <span><small>Найближча мапа</small><b>${closeMap ? `${esc(closeMap.map)} ${esc(closeMap.playerRounds)}-${esc(closeMap.enemyRounds)}` : '-'}</b></span>
+            </div>
+        `;
+    }
+
+    function enhancePostMatchReport() {
+        const report = window.seriesState?.completedReport || (typeof seriesState !== 'undefined' ? seriesState.completedReport : null);
+        const container = document.getElementById('post-match-report');
+        if (!container || !report || container.querySelector('.post-match-polish-summary')) return;
+        const hero = container.querySelector('.post-match-hero');
+        if (hero) hero.insertAdjacentHTML('afterend', buildPostMatchSummary(report));
+    }
+
+    function finalUxPolish() {
+        document.body.classList.add('game-ready');
+        normalizeVisibleNumbers();
+        installEmptyStates();
+        colorKeyNumbers();
+        enhancePostMatchReport();
+    }
+
+    const previousUpdate = window.updateUI || (typeof updateUI === 'function' ? updateUI : null);
+    if (previousUpdate && !previousUpdate.__codexFinalUxWrapped) {
+        const wrapped = function () {
+            const result = previousUpdate.apply(this, arguments);
+            setTimeout(finalUxPolish, 0);
+            return result;
+        };
+        wrapped.__codexFinalUxWrapped = true;
+        window.updateUI = wrapped;
+        try { updateUI = wrapped; } catch (error) {}
+    }
+
+    const previousPostMatch = window.renderPostMatchReport || (typeof renderPostMatchReport === 'function' ? renderPostMatchReport : null);
+    if (previousPostMatch && !previousPostMatch.__codexFinalUxWrapped) {
+        const wrappedPostMatch = function () {
+            const result = previousPostMatch.apply(this, arguments);
+            enhancePostMatchReport();
+            return result;
+        };
+        wrappedPostMatch.__codexFinalUxWrapped = true;
+        window.renderPostMatchReport = wrappedPostMatch;
+        try { renderPostMatchReport = wrappedPostMatch; } catch (error) {}
+    }
+
+    window.addEventListener('load', () => {
+        finalUxPolish();
+        setTimeout(finalUxPolish, 250);
+    });
+})();
+
+// === CODEX COMPACT ODDS / RATINGS / FILTERS POLISH ===
+(function () {
+    'use strict';
+
+    function safe(value) {
+        return typeof escapeLiveText === 'function' ? escapeLiveText(value) : String(value ?? '');
+    }
+
+    function ratingGrade(value) {
+        const number = Math.round(Number(value) || 0);
+        if (number >= 95) return 'gold';
+        if (number >= 90) return 'red';
+        if (number >= 85) return 'pink';
+        if (number >= 80) return 'purple';
+        if (number >= 75) return 'blue';
+        if (number >= 70) return 'cyan';
+        return 'gray';
+    }
+
+    function mapGrade(value) {
+        const number = Number(value) || 0;
+        if (number >= 26) return 'gold';
+        if (number >= 21) return 'red';
+        if (number >= 16) return 'pink';
+        if (number >= 11) return 'purple';
+        if (number >= 6) return 'blue';
+        if (number >= 1) return 'cyan';
+        return 'gray';
+    }
+
+    function teamLogo(teamName, className = 'team-logo team-logo-compact') {
+        return typeof teamLogoHtml === 'function' ? teamLogoHtml(teamName, className) : '';
+    }
+
+    function decimalOdds(probability) {
+        const safeProbability = Number.isFinite(probability) ? probability : 0.5;
+        return Math.max(1.05, 1 / Math.max(0.01, safeProbability * 1.06)).toFixed(2);
+    }
+
+    function matchProbability() {
+        const enemy = typeof getTeamByName === 'function' ? getTeamByName(state.currentEnemy?.name) : null;
+        if (typeof window.calculatePowerWinChance === 'function') {
+            const raw = Number(window.calculatePowerWinChance(enemy || state.currentEnemy, state.currentMap));
+            if (Number.isFinite(raw)) return Math.max(0.16, Math.min(0.84, raw));
+        }
+        const ownRaw = typeof window.getEffectiveRosterSkill === 'function' ? Number(window.getEffectiveRosterSkill(state.players || [])) : 75;
+        const own = Number.isFinite(ownRaw) ? ownRaw : 75;
+        const enemyRaw = enemy?.players?.length ? enemy.players.reduce((sum, player) => sum + Number(player.skill || 70), 0) / enemy.players.length : 75;
+        const enemySkill = Number.isFinite(enemyRaw) ? enemyRaw : 75;
+        return Math.max(0.16, Math.min(0.84, 0.5 + (own - enemySkill) / 100));
+    }
+
+    function compactOddsHtml(probability, live = false) {
+        probability = Number.isFinite(probability) ? probability : 0.5;
+        const enemy = typeof getTeamByName === 'function' ? getTeamByName(state.currentEnemy?.name) : null;
+        const ownName = state.userTeamFullName || state.userTeamTag || 'Your team';
+        const enemyName = enemy?.name || state.currentEnemy?.name || 'Opponent';
+        const ownOdds = decimalOdds(probability);
+        const enemyOdds = decimalOdds(1 - probability);
+        return `
+            <span class="odds-title compact"><small>CS2 ODDS</small><b>${live ? 'LIVE' : 'BO3'}</b></span>
+            <span class="odds-team compact own" title="${safe(ownName)}">${teamLogo(ownName)}<b>${ownOdds}</b></span>
+            <i>${Math.round(probability * 100)}%</i>
+            <span class="odds-team compact" title="${safe(enemyName)}">${teamLogo(enemyName)}<b>${enemyOdds}</b></span>
+        `;
+    }
+
+    function enhanceOdds() {
+        const probability = matchProbability();
+        const pre = document.getElementById('pre-match-odds');
+        if (pre) pre.innerHTML = compactOddsHtml(probability, false);
+        const live = document.getElementById('live-match-odds');
+        if (live) {
+            const scoreParts = (document.getElementById('live-score')?.textContent || '0:0').match(/\d+/g) || [];
+            const own = Number(scoreParts[0] || 0);
+            const enemy = Number(scoreParts[1] || 0);
+            const liveProbability = Math.max(0.08, Math.min(0.92, probability + (own - enemy) * 0.022));
+            live.innerHTML = compactOddsHtml(liveProbability, true);
+        }
+    }
+
+    function installCompactStyle() {
+        if (document.getElementById('codex-compact-polish-style')) return;
+        const style = document.createElement('style');
+        style.id = 'codex-compact-polish-style';
+        style.textContent = `
+            .team-logo-compact{width:28px!important;height:28px!important;object-fit:contain!important;display:block!important}
+            .bookmaker-odds{display:inline-grid!important;grid-template-columns:auto 74px 42px 74px!important;gap:7px!important;padding:6px 10px!important;align-items:center!important;justify-content:start!important;width:max-content!important;max-width:100%!important}
+            .bookmaker-odds .odds-title.compact{min-width:66px!important;padding:0!important}
+            .bookmaker-odds .odds-title.compact small{font-size:8px!important;line-height:1!important}
+            .bookmaker-odds .odds-title.compact b{font-size:10px!important}
+            .bookmaker-odds .odds-team.compact{display:flex!important;justify-content:center!important;gap:7px!important;min-width:0!important;padding:5px 7px!important;border-radius:6px!important}
+            .bookmaker-odds .odds-team.compact b{font-size:14px!important;color:#ffd54f!important}
+            .live-bookmaker-odds,#live-match-odds{display:inline-grid!important;grid-template-columns:auto 74px 42px 74px!important;justify-content:start!important;width:max-content!important;max-width:100%!important;margin:4px 0 8px!important;background:transparent!important;border-top:0!important}
+            #live-match-odds{justify-self:start!important;align-self:start!important}
+            .live-team-name .team-logo{width:24px!important;height:24px!important;object-fit:contain!important}
+            .live-team-name .live-team-mark{display:none!important}
+            .live-team-name{grid-template-columns:26px minmax(0,1fr)!important;gap:8px!important}
+            .live-team-name b{font-size:13px!important}
+            .rating-chip,.skill-chip,.map-skill-chip{display:inline-flex;align-items:center;justify-content:center;min-width:36px;padding:3px 7px;border-radius:5px;font-weight:900;font-variant-numeric:tabular-nums;border:1px solid rgba(255,255,255,.18)}
+            .grade-gold{background:#3d3212!important;color:#ffd75a!important;border-color:#d7a92e!important;box-shadow:0 0 14px rgba(255,215,90,.18)}
+            .grade-red{background:#38171a!important;color:#ff5969!important;border-color:#bd3447!important}
+            .grade-pink{background:#351833!important;color:#ff7bdb!important;border-color:#b84da7!important}
+            .grade-purple{background:#221943!important;color:#b99cff!important;border-color:#765dce!important}
+            .grade-blue{background:#112846!important;color:#65a9ff!important;border-color:#3468ad!important}
+            .grade-cyan{background:#10323d!important;color:#66e3ff!important;border-color:#2a8ca0!important}
+            .grade-gray{background:#242a30!important;color:#aeb7bf!important;border-color:#47515b!important}
+            .club-player-stats-modern{display:grid;gap:6px;margin-top:8px}
+            .club-player-stats-modern .head,.club-player-stats-modern .row{display:grid;grid-template-columns:minmax(120px,1.4fr) 58px 70px 78px 58px;align-items:center;gap:8px;padding:7px 9px;border:1px solid #2e3d48;background:#111b24}
+            .club-player-stats-modern .head{background:#172838;color:#8fb1c8;font-size:9px;font-weight:900;text-transform:uppercase}
+            .club-player-stats-modern .row:nth-child(odd){background:#142231}
+            .club-player-stats-modern .player{display:flex;align-items:center;gap:7px;min-width:0}
+            .club-player-stats-modern .player b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+            .club-player-stats-modern small{color:#87a0b0}
+            #scouting-panel{display:none!important}
+            #rating-tab{grid-template-columns:1fr!important}
+            .calendar-filter-bar,.tournament-filter-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 12px;flex-wrap:wrap;padding:9px 10px;border:1px solid #26394a;background:#0d1722;border-radius:6px}
+            .calendar-filter-bar select,.tournament-filter-bar select{min-height:32px;background:#111b24;color:#e6f1f6;border:1px solid #334757;padding:0 9px;border-radius:5px;font-weight:800}
+            #round-window-body{display:block!important}
+            .round-tournament-group{display:grid;gap:7px;margin-bottom:10px}
+            .round-tournament-group>h4{margin:4px 0;color:#baff00;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+            @media(max-width:760px){
+                .bookmaker-odds{grid-template-columns:auto 1fr 34px 1fr!important}
+                .club-player-stats-modern .head,.club-player-stats-modern .row{grid-template-columns:minmax(100px,1.2fr) 44px 58px 64px 44px;font-size:11px}
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    function renderCompactLiveTeamStats(teamName, stats, sideClass, score, scoreUnit = 'раундів') {
+        const sorted = [...stats].sort((a, b) => b.rating - a.rating || b.kills - a.kills);
+        return `
+            <section class="live-team-table">
+                <div class="live-team-header ${sideClass}">
+                    <div class="live-team-name">${teamLogo(teamName)}<span><b>${safe(teamName)}</b><small>${score} ${safe(scoreUnit)}</small></span></div>
+                    <span class="live-stat-label">K-D</span>
+                    <span class="live-stat-label">Swing</span>
+                    <span class="live-stat-label">ADR</span>
+                    <span class="live-stat-label">KAST</span>
+                    <span class="live-stat-label">Rating</span>
+                </div>
+                ${sorted.map((stat, index) => {
+                    const adr = stat.rounds ? stat.damage / stat.rounds : 0;
+                    const kast = stat.rounds ? stat.kastRounds / stat.rounds * 100 : 0;
+                    const swingClass = stat.swing > 0.15 ? 'positive' : stat.swing < -0.15 ? 'negative' : '';
+                    const swingText = `${stat.swing >= 0 ? '+' : ''}${stat.swing.toFixed(2)}%`;
+                    const displayRating = Math.round(Math.max(0, Math.min(100, (Number(stat.baseSkill || stat.skill || 70) || 70))));
+                    return `
+                        <div class="live-player-stat ${index === 0 ? 'is-leader' : ''}">
+                            <div class="live-player-name"><span class="live-player-role">${safe(stat.role === 'AWP' ? 'AWP' : stat.role === 'IGL' ? 'IGL' : 'RIF')}</span><b>${safe(stat.name)}</b><small>${safe(stat.role)}</small></div>
+                            <span class="live-stat-value">${stat.kills}-${stat.deaths}</span>
+                            <span class="live-stat-value live-swing ${swingClass}">${swingText}</span>
+                            <span class="live-stat-value">${adr.toFixed(1)}</span>
+                            <span class="live-stat-value">${kast.toFixed(1)}%</span>
+                            <span class="live-stat-value live-rating ${getLiveRatingClass(stat.rating)}"><span class="rating-chip grade-${ratingGrade(displayRating)}">${stat.rating.toFixed(2)}</span></span>
+                        </div>
+                    `;
+                }).join('')}
+            </section>
+        `;
+    }
+
+    if (typeof renderLiveTeamStats === 'function') {
+        renderLiveTeamStats = renderCompactLiveTeamStats;
+        window.renderLiveTeamStats = renderCompactLiveTeamStats;
+    }
+
+    function enhanceClubStats() {
+        const panel = document.getElementById('player-stats-panel');
+        if (!panel || panel.__compactStatsDone) return;
+        const rows = [...panel.querySelectorAll('.club-player-stats-row:not(.head)')];
+        if (!rows.length) return;
+        const players = state.players || [];
+        panel.__compactStatsDone = true;
+        const html = `
+            <h3>Середня статистика за всі матчі</h3>
+            <div class="club-player-stats-modern">
+                <div class="head"><span>Гравець</span><span>Матчі</span><span>K/D</span><span>Rating</span><span>MVP</span></div>
+                ${players.map(player => {
+                    if (typeof ensurePlayerStats === 'function') ensurePlayerStats(player);
+                    const rating = typeof getAveragePlayerRating === 'function' ? getAveragePlayerRating(player) : Number(player.stats?.rating || 1).toFixed(2);
+                    return `<div class="row">
+                        <span class="player"><b>${safe(player.name)}</b><small>${safe(player.role)}</small></span>
+                        <span>${player.stats?.matches || 0}</span>
+                        <span>${typeof getPlayerKd === 'function' ? getPlayerKd(player) : '0.00'}</span>
+                        <span><span class="rating-chip grade-${ratingGrade(player.skill)}">${rating}</span></span>
+                        <span>${player.stats?.mvps || 0}</span>
+                    </div>`;
+                }).join('')}
+            </div>`;
+        panel.innerHTML = html;
+    }
+
+    function colorizeRatings() {
+        document.querySelectorAll('.squad-role-player strong, .scout-stat-card .highlight, .world-team-player-list button span:last-child, .world-team-player-list .rating-grade').forEach(element => {
+            const text = element.textContent || '';
+            const match = text.match(/(?:Skill|Rating)?\s*(\d{2,3})/i);
+            if (!match || element.querySelector('.rating-chip')) return;
+            const value = Number(match[1]);
+            element.innerHTML = element.innerHTML.replace(match[1], `<span class="rating-chip grade-${ratingGrade(value)}">${match[1]}</span>`);
+        });
+        document.querySelectorAll('.world-team-window, .world-player-modal, #world-player-modal, .player-profile-window').forEach(panel => {
+            if (panel.__ratingColorized) return;
+            panel.__ratingColorized = true;
+            panel.querySelectorAll('p, small, span, em, b, div').forEach(element => {
+                if (element.children.length > 2 || element.querySelector('.rating-chip')) return;
+                element.innerHTML = element.innerHTML.replace(/Rating\s+(\d{1,3})/g, (full, value) => {
+                    const rating = Number(value);
+                    return `Rating <span class="rating-chip grade-${ratingGrade(rating)}">${value}</span>`;
+                });
+            });
+        });
+    }
+
+    function colorizeMaps() {
+        // Map cards keep their tactical colors; only player ratings use the grade palette.
+    }
+
+    function tournamentKey(match) {
+        return match?.tournament || match?.event || match?.tier || match?.stage || 'Інші матчі';
+    }
+
+    const oldOpenCalendarRound = window.openCalendarRound;
+    window.openCalendarRound = function (season, week, filter = 'all') {
+        const modal = typeof ensureRoundWindow === 'function' ? ensureRoundWindow() : null;
+        if (!modal) return oldOpenCalendarRound?.(season, week);
+        const matches = (state.calendar || []).filter(match => match.season === season && match.week === week);
+        const tournaments = [...new Set(matches.map(tournamentKey))];
+        const visible = filter === 'all' ? matches : matches.filter(match => tournamentKey(match) === filter);
+        const title = document.getElementById('round-window-title');
+        const subtitle = document.getElementById('round-window-subtitle');
+        const body = document.getElementById('round-window-body');
+        if (title) title.textContent = `Сезон ${season} • Тур ${week}`;
+        if (subtitle) subtitle.textContent = `${visible.length}/${matches.length} матчів`;
+        if (body) {
+            const groups = [...new Set(visible.map(tournamentKey))].map(name => ({
+                name,
+                matches: visible.filter(match => tournamentKey(match) === name)
+            }));
+            body.innerHTML = `
+                <div class="calendar-filter-bar"><b>Сортування по турніру</b><select onchange="openCalendarRound(${season}, ${week}, this.value)">
+                    <option value="all">Усі турніри</option>
+                    ${tournaments.map(name => `<option value="${safe(name)}" ${name === filter ? 'selected' : ''}>${safe(name)}</option>`).join('')}
+                </select></div>
+                ${groups.map(group => `<section class="round-tournament-group"><h4>${safe(group.name)}</h4>${group.matches.map(match => `
+                    <article class="round-match-card ${match.isPlayer ? 'player-round-card' : ''}">
+                        <div class="round-match-head"><span>${safe(match.tier || group.name)}</span><span>${safe(match.stage || '')}</span></div>
+                        <div class="round-match-score"><b>${teamLogo(match.teamA)}${safe(match.teamA)}</b><strong>${safe(match.score || '-')}</strong><b>${teamLogo(match.teamB)}${safe(match.teamB)}</b></div>
+                        <div class="round-map-results">(${typeof formatMapDetails === 'function' ? formatMapDetails(match) : ''})</div>
+                    </article>
+                `).join('')}</section>`).join('')}
+            `;
+        }
+        modal.style.display = 'flex';
+    };
+
+    function enhanceTournamentWindow() {
+        document.querySelectorAll('#tournament-window-body .tournament-filter-bar').forEach(bar => bar.remove());
+        return;
+        const body = document.getElementById('tournament-window-body');
+        if (!body || body.__compactTournamentFilter) return;
+        const sections = [...body.querySelectorAll('.tier-table')];
+        if (sections.length < 2) return;
+        body.__compactTournamentFilter = true;
+        const bar = document.createElement('div');
+        bar.className = 'tournament-filter-bar';
+        bar.innerHTML = `<b>Сортування по турніру</b><select><option value="all">Усі турніри</option>${sections.map((section, index) => `<option value="${index}">${safe(section.querySelector('h3')?.textContent?.trim() || 'Турнір')}</option>`).join('')}</select>`;
+        body.prepend(bar);
+        bar.querySelector('select').addEventListener('change', event => {
+            sections.forEach((section, index) => {
+                section.style.display = event.target.value === 'all' || event.target.value === String(index) ? '' : 'none';
+            });
+        });
+    }
+
+    function runCompactPolish() {
+        installCompactStyle();
+        enhanceOdds();
+        enhanceClubStats();
+        colorizeRatings();
+        colorizeMaps();
+        enhanceTournamentWindow();
+    }
+
+    const previousUpdateUI = updateUI;
+    updateUI = function () {
+        const result = previousUpdateUI.apply(this, arguments);
+        runCompactPolish();
+        return result;
+    };
+
+    const previousRenderTournamentWindow = window.renderTournamentWindow || renderTournamentWindow;
+    renderTournamentWindow = function () {
+        const result = previousRenderTournamentWindow.apply(this, arguments);
+        runCompactPolish();
+        return result;
+    };
+    window.renderTournamentWindow = renderTournamentWindow;
+
+    window.addEventListener('load', function () {
+        runCompactPolish();
+        setTimeout(runCompactPolish, 150);
+    });
+})();
+
+// === CODEX VETO HARD FIX: stable clicks + cleaner full-screen layout ===
+(function () {
+    const fixStyle = document.createElement('style');
+    fixStyle.id = 'codex-veto-hard-fix-style';
+    fixStyle.textContent = `
+        #veto-screen {
+            position: fixed !important;
+            inset: 0 !important;
+            width: auto !important;
+            height: auto !important;
+            min-height: 100dvh !important;
+            overflow: auto !important;
+            z-index: 2147483000 !important;
+            padding: 28px clamp(16px, 3vw, 42px) 42px !important;
+            background:
+                radial-gradient(circle at 18% 0%, rgba(0, 255, 194, .09), transparent 32%),
+                linear-gradient(180deg, #050911 0%, #070b12 58%, #05070d 100%) !important;
+            box-sizing: border-box !important;
+            text-align: center !important;
+        }
+
+        #veto-screen[style*="display: block"] {
+            display: block !important;
+        }
+
+        #veto-turn {
+            max-width: 1180px !important;
+            margin: 12px auto 12px !important;
+            color: #28f4d0 !important;
+            font-size: clamp(22px, 2.4vw, 30px) !important;
+            line-height: 1.15 !important;
+            letter-spacing: 0 !important;
+        }
+
+        #veto-screen .veto-layout-polished,
+        #veto-screen .veto-side-panel,
+        #veto-maps-container.veto-grid-polished {
+            width: min(1180px, 100%) !important;
+            max-width: 1180px !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+
+        #veto-screen .veto-side-panel {
+            display: grid !important;
+            grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr) !important;
+            gap: 12px !important;
+            margin-bottom: 16px !important;
+            position: relative !important;
+            z-index: 1 !important;
+        }
+
+        #veto-screen .veto-turn-card,
+        #veto-screen .veto-pool-card {
+            min-height: 78px !important;
+            border: 1px solid rgba(92, 130, 160, .42) !important;
+            background: rgba(12, 23, 34, .94) !important;
+            box-shadow: 0 12px 35px rgba(0, 0, 0, .25) !important;
+        }
+
+        #veto-maps-container.veto-grid-polished {
+            display: grid !important;
+            grid-template-columns: repeat(auto-fit, minmax(182px, 1fr)) !important;
+            gap: 12px !important;
+            align-items: stretch !important;
+            margin-top: 0 !important;
+            position: relative !important;
+            z-index: 4 !important;
+            pointer-events: auto !important;
+        }
+
+        #veto-maps-container .veto-map-card {
+            appearance: none !important;
+            min-height: 188px !important;
+            height: 100% !important;
+            padding: 13px !important;
+            border-radius: 8px !important;
+            border-color: #32465c !important;
+            background: linear-gradient(135deg, #162334, #101723) !important;
+            transform: translateZ(0) !important;
+            user-select: none !important;
+            touch-action: manipulation !important;
+            pointer-events: auto !important;
+            cursor: pointer !important;
+        }
+
+        #veto-maps-container .veto-map-card[disabled],
+        #veto-maps-container .veto-map-card.veto-disabled {
+            cursor: wait !important;
+            opacity: .62 !important;
+        }
+
+        #veto-maps-container .veto-map-card * {
+            pointer-events: none !important;
+        }
+
+        #veto-maps-container .veto-map-card:hover,
+        #veto-maps-container .veto-map-card:focus-visible {
+            border-color: #baff00 !important;
+            box-shadow: 0 0 0 2px rgba(186, 255, 0, .16), 0 18px 40px rgba(0, 0, 0, .32) !important;
+            outline: none !important;
+        }
+
+        .veto-map-meta span {
+            min-height: 32px !important;
+        }
+
+        .veto-map-meta strong {
+            text-align: right !important;
+            overflow-wrap: anywhere !important;
+        }
+
+        #veto-log.veto-log-polished {
+            width: min(1180px, 100%) !important;
+            max-width: 1180px !important;
+            margin: 16px auto 0 !important;
+            min-height: 120px !important;
+            max-height: 220px !important;
+            border-radius: 8px !important;
+        }
+
+        @media (max-width: 820px) {
+            #veto-screen .veto-side-panel {
+                grid-template-columns: 1fr !important;
+            }
+
+            #veto-maps-container.veto-grid-polished {
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) !important;
+            }
+        }
+    `;
+    document.head.appendChild(fixStyle);
+
+    let lastVetoClick = 0;
+
+    function escapeVetoText(value) {
+        if (typeof escapeLiveText === 'function') return escapeLiveText(value);
+        const div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML;
+    }
+
+    function vetoMapWinrate(row) {
+        return typeof getMapWinrate === 'function' ? getMapWinrate(row || {}) : 0;
+    }
+
+    function signedVeto(value) {
+        const number = Number(value || 0);
+        return `${number >= 0 ? '+' : ''}${number}`;
+    }
+
+    function getVetoScore(team, mapName, own) {
+        const row = own ? state.mapMastery?.[mapName] : team?.mapStats?.[mapName];
+        const skill = Number(row?.skill || 0);
+        const wr = row?.played ? vetoMapWinrate(row) : 50;
+        return skill + (wr - 50) * 0.08 + Math.min(6, Number(row?.played || 0) * 0.25);
+    }
+
+    function chooseVetoMap(mapName) {
+        const now = Date.now();
+        if (now - lastVetoClick < 250) return;
+        lastVetoClick = now;
+        if (!vetoState || vetoState.step % 2 !== 0) return;
+        if (!vetoState.availableMaps || !vetoState.availableMaps.includes(mapName)) return;
+        if (typeof handleVetoAction === 'function') handleVetoAction(mapName);
+    }
+
+    function installDocumentVetoClickFallback() {
+        if (document.__codexVetoDocumentClick) return;
+        document.__codexVetoDocumentClick = true;
+        const handler = event => {
+            const screen = document.getElementById('veto-screen');
+            if (!screen || getComputedStyle(screen).display === 'none') return;
+            const card = event.target.closest?.('.veto-map-card');
+            if (!card || card.disabled || card.classList.contains('veto-disabled')) return;
+            event.preventDefault();
+            event.stopPropagation();
+            chooseVetoMap(card.dataset.vetoMap);
+        };
+        document.addEventListener('click', handler, true);
+        document.addEventListener('pointerup', handler, true);
+        document.addEventListener('touchend', handler, true);
+    }
+
+    function ensureVetoClickDelegate() {
+        const container = document.getElementById('veto-maps-container');
+        if (!container || container.__codexVetoHardClick) return;
+        container.__codexVetoHardClick = true;
+        container.addEventListener('click', event => {
+            const card = event.target.closest('.veto-map-card');
+            if (!card || card.classList.contains('veto-disabled')) return;
+            event.preventDefault();
+            event.stopPropagation();
+            chooseVetoMap(card.dataset.vetoMap);
+        }, true);
+        container.addEventListener('pointerup', event => {
+            const card = event.target.closest('.veto-map-card');
+            if (!card || card.classList.contains('veto-disabled')) return;
+            event.preventDefault();
+            event.stopPropagation();
+            chooseVetoMap(card.dataset.vetoMap);
+        }, true);
+    }
+
+    function renderHardVetoMaps() {
+        const container = document.getElementById('veto-maps-container');
+        if (!container) return;
+        const enemyTeam = typeof getTeamByName === 'function' ? getTeamByName(state.currentEnemy?.name) : null;
+        if (enemyTeam && typeof ensureTeamCompetitiveProfile === 'function') ensureTeamCompetitiveProfile(enemyTeam);
+        state.mapMastery = typeof ensureMapStatsObject === 'function' ? ensureMapStatsObject(state.mapMastery || {}) : (state.mapMastery || {});
+
+        const available = vetoState.availableMaps || [];
+        const isPlayerTurn = vetoState.step % 2 === 0;
+        const enemyRank = [...available].sort((a, b) => getVetoScore(enemyTeam, b, false) - getVetoScore(enemyTeam, a, false));
+        const ownRank = [...available].sort((a, b) => getVetoScore(null, b, true) - getVetoScore(null, a, true));
+        const bestEnemy = enemyRank[0];
+        const worstEnemy = enemyRank[enemyRank.length - 1];
+        const bestOwn = ownRank[0];
+
+        container.className = 'veto-grid-polished';
+        container.onclick = null;
+        container.innerHTML = '';
+
+        available.forEach(mapName => {
+            const enemyMap = enemyTeam?.mapStats?.[mapName] || { skill: 0, played: 0, wins: 0 };
+            const playerMap = state.mapMastery?.[mapName] || { skill: 0, played: 0, wins: 0 };
+            const diff = getVetoScore(null, mapName, true) - getVetoScore(enemyTeam, mapName, false);
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.dataset.vetoMap = mapName;
+            button.className = `veto-map-card ${isPlayerTurn ? 'player-turn' : 'veto-disabled'} ${diff > 7 ? 'veto-own-edge' : diff < -7 ? 'veto-danger' : mapName === bestEnemy ? 'veto-enemy-edge' : 'veto-neutral'}`;
+            if (!isPlayerTurn) button.disabled = true;
+            button.innerHTML = `
+                <div class="veto-map-badges">
+                    ${mapName === bestOwn ? '<span class="veto-map-badge own">ВАША СИЛЬНА</span>' : ''}
+                    ${mapName === bestEnemy ? '<span class="veto-map-badge best">СИЛЬНА СУПЕРНИКА</span>' : ''}
+                    ${mapName === worstEnemy ? '<span class="veto-map-badge worst">СЛАБКА СУПЕРНИКА</span>' : ''}
+                </div>
+                <b>${escapeVetoText(mapName)}</b>
+                <div class="veto-map-meta">
+                    <span><em>Ви</em><strong>${signedVeto(playerMap.skill || 0)}/30 · WR ${vetoMapWinrate(playerMap)}%</strong></span>
+                    <span><em>Суперник</em><strong>${signedVeto(enemyMap.skill || 0)}/30 · WR ${vetoMapWinrate(enemyMap)}%</strong></span>
+                    <span><em>Рішення</em><strong>${diff > 7 ? 'вигідно лишити' : diff < -7 ? 'краще банити' : 'рівна мапа'}</strong></span>
+                </div>`;
+            container.appendChild(button);
+        });
+
+        ensureVetoClickDelegate();
+        installDocumentVetoClickFallback();
+        updateHardVetoSide(bestOwn, bestEnemy);
+    }
+
+    function updateHardVetoSide(bestOwn, bestEnemy) {
+        const container = document.getElementById('veto-maps-container');
+        if (!container) return;
+        let side = document.getElementById('veto-side-panel');
+        if (!side) {
+            side = document.createElement('aside');
+            side.id = 'veto-side-panel';
+            side.className = 'veto-side-panel';
+            container.parentElement.insertBefore(side, container);
+        }
+        container.parentElement.classList.add('veto-layout-polished');
+        const isPlayerTurn = vetoState.step % 2 === 0;
+        const action = vetoState.step === 0 ? 'BAN' : vetoState.step === 2 ? 'PICK' : vetoState.step === 4 ? 'BAN' : 'DECIDER';
+        const chosen = vetoState.chosenMaps || [];
+        side.innerHTML = `
+            <div class="veto-turn-card">
+                <small>${isPlayerTurn ? 'ТВІЙ ХІД' : 'ХІД СУПЕРНИКА'}</small>
+                <b>${isPlayerTurn ? `Обери ${action}` : 'Очікуємо рішення'}</b>
+                <em>Ваша найкраща: ${escapeVetoText(bestOwn || '-')} · найкраща суперника: ${escapeVetoText(bestEnemy || '-')}</em>
+            </div>
+            <div class="veto-pool-card">
+                <small>ОБРАНІ МАПИ</small>
+                <b>${chosen.length ? chosen.map(escapeVetoText).join(' · ') : 'Ще немає'}</b>
+                <em>Доступно: ${(vetoState.availableMaps || []).length}</em>
+            </div>`;
+        const log = document.getElementById('veto-log');
+        if (log) {
+            log.classList.add('veto-log-polished');
+            if (log.parentElement !== container.parentElement) container.parentElement.appendChild(log);
+        }
+    }
+
+    const oldStartVetoPhase = window.startVetoPhase;
+    window.startVetoPhase = function () {
+        if (typeof oldStartVetoPhase === 'function') oldStartVetoPhase.apply(this, arguments);
+        const game = document.getElementById('game-interface');
+        const veto = document.getElementById('veto-screen');
+        if (game) game.style.display = 'none';
+        if (veto) veto.style.display = 'block';
+        renderHardVetoMaps();
+    };
+
+    renderVetoMaps = renderHardVetoMaps;
+    renderHardVetoMaps.__codexPolished = true;
+    renderHardVetoMaps.__codexHardFixed = true;
+    window.renderVetoMaps = renderHardVetoMaps;
+    window.__codexChooseVetoMap = chooseVetoMap;
+    installDocumentVetoClickFallback();
+
+    window.addEventListener('load', function () {
+        renderHardVetoMaps.__codexPolished = true;
+        renderHardVetoMaps.__codexHardFixed = true;
+        renderVetoMaps = renderHardVetoMaps;
+        window.renderVetoMaps = renderHardVetoMaps;
+        installDocumentVetoClickFallback();
+    });
+})();
